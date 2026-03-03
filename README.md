@@ -2,7 +2,7 @@
 
 **Android TAK ↔ Reticulum Network Stack Bridge**
 
-RTAK Bridge is an Android application that serves as a *thin TAK server*, bridging Cursor on Target (CoT) messages between TAK clients (ATAK, WinTAK, iTAK) and the [Reticulum Network Stack](https://github.com/markqvist/Reticulum/tree/1.1.3) v1.1.3. This enables TAK-based situational awareness over Reticulum's encrypted, infrastructure-independent mesh networks — including LoRa, packet radio, serial links, WiFi, and TCP/IP.
+RTAK is an Android application that serves as a *thin TAK server*, bridging Cursor on Target (CoT) messages between TAK clients (ATAK, WinTAK, iTAK) and the [Reticulum Network Stack](https://github.com/markqvist/Reticulum/tree/1.1.3) v1.1.3. This enables TAK-based situational awareness over Reticulum's encrypted, infrastructure-independent mesh networks — including LoRa, packet radio, serial links, WiFi, and TCP/IP.
 
 ## Architecture
 
@@ -108,7 +108,7 @@ rtak-bridge/
 
 ### Starting the Bridge
 
-1. Launch RTAK Bridge on your Android device.
+1. Launch RTAK on your Android device.
 2. Tap **Start Bridge** — this launches the foreground service which:
    - Initialises Reticulum (creates/loads identity, starts interfaces)
    - Starts the TAK TCP server on port 8087
