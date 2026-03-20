@@ -1,12 +1,23 @@
 package com.caai.rtak;
 
 import android.content.Context;
+import android.os.Build;
 import android.util.Log;
 
 import com.chaquo.python.PyObject;
 import com.chaquo.python.Python;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.Iterator;
 
 /**
  * Java-side wrapper around the Python {@code rtak_bridge} module.
@@ -183,11 +194,81 @@ public class ReticulumBridge {
     public boolean generateRnsConfig(Context context, String detectedInterfacesJson) {
         try {
             File configDir = new File(context.getFilesDir(), "reticulum");
-            PyObject result = bridgeModule.callAttr(
-                    "generate_rns_config",
-                    configDir.getAbsolutePath(),
-                    detectedInterfacesJson);
-            return result.toJava(Boolean.class);
+            File configFile = new File(configDir, "config");
+            File registryFile = new File(configDir, "rtak_interfaces.json");
+
+            // 1. Parse optional detected-interfaces map  (name → resolved device path)
+            JSONObject detected = null;
+            if (detectedInterfacesJson != null && !detectedInterfacesJson.isEmpty()) {
+                detected = new JSONObject(detectedInterfacesJson);
+            }
+
+            // 2. Read interface registry (may not exist on first run)
+            JSONArray registry = new JSONArray();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && registryFile.exists()) {
+                String raw = new String(Files.readAllBytes(registryFile.toPath()), StandardCharsets.UTF_8);
+                registry = new JSONArray(raw);
+            }
+
+            // 3. Fixed [reticulum] and [logging] sections (regenerated each boot)
+            String reticulumSection = "[reticulum]\n  enable_transport = True\n  share_instance   = No\n"
+                    + "  shared_instance_port = 37428\n  instance_control_port = 37429\n"
+                    + "  panic_on_interface_error = No\n";
+            String loggingSection = "[logging]\n  loglevel = 4\n";
+
+            // 4. Build [interfaces] section
+            StringBuilder interfaces = new StringBuilder("[interfaces]\n");
+            int ifaceCount = 0;
+            for (int i = 0; i < registry.length(); i++) {
+                JSONObject entry = registry.getJSONObject(i);
+                if (!entry.optBoolean("enabled", true)) continue;
+                String name = entry.optString("name", "").trim();
+                String itype = entry.optString("type", "").trim();
+                if (name.isEmpty() || itype.isEmpty()) continue;
+                if (detected != null && !detected.has(name)) continue;
+
+                // Deep-copy config so USB port injection doesn't mutate the original
+                JSONObject entryConfig = entry.optJSONObject("config");
+                JSONObject config = new JSONObject(entryConfig != null ? entryConfig.toString() : "{}");
+
+                // For USB interfaces, inject the resolved device path
+                JSONObject ident = entry.optJSONObject("identifier");
+                if (ident != null && "usb".equals(ident.optString("method")) && detected != null) {
+                    String resolvedPath = detected.isNull(name) ? null : detected.optString(name, null);
+                    if (resolvedPath != null && !resolvedPath.isEmpty()) {
+                        config.put("port", resolvedPath);
+                    } else if (!config.has("port")) {
+                        Log.w(TAG, "Skipping '" + name + "': USB device not detected");
+                        continue;
+                    }
+                }
+
+                interfaces.append("  [[").append(name).append("]]\n");
+                interfaces.append("    type = ").append(itype).append("\n");
+                interfaces.append("    enabled = Yes\n");
+                Iterator<String> keys = config.keys();
+                while (keys.hasNext()) {
+                    String key = keys.next();
+                    interfaces.append("    ").append(key).append(" = ").append(config.get(key)).append("\n");
+                }
+                interfaces.append("\n");
+                ifaceCount++;
+            }
+
+            // 5. Write config file
+            configDir.mkdirs();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Files.deleteIfExists(configFile.toPath());
+                Files.createFile(configFile.toPath());
+            }
+            String configContent = "# RTAK Bridge — Reticulum Config (auto-generated)\n\n"
+                    + reticulumSection + "\n" + loggingSection + "\n" + interfaces;
+            try (PrintStream ps = new PrintStream(configFile)) {
+                ps.print(configContent);
+            }
+
+            Log.i(TAG, "Generated RNS config with " + ifaceCount + " interface(s)");
+            return true;
         } catch (Exception e) {
             Log.e(TAG, "generateRnsConfig() failed", e);
             return false;

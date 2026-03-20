@@ -38,6 +38,8 @@ public class RNodeIdentifier {
     private static final byte CMD_MCU      = (byte) 0x49;
     private static final byte CMD_DEV_HASH = (byte) 0x56;
     private static final byte CMD_ROM_READ = (byte) 0x51;
+    private static final byte[] VALID_CMD = { CMD_DETECT, CMD_MCU, CMD_DEV_HASH, CMD_ROM_READ };
+
 
     // CMD_DETECT handshake bytes
     private static final byte DETECT_REQ  = (byte) 0x73;
@@ -118,19 +120,15 @@ public class RNodeIdentifier {
                 try {
                     port.open(connection);
                     port.setParameters(115200, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE);
-
-                    // CDC ACM devices (nRF52840, etc.) gate communication on DTR.
-                    // usb-serial-for-android sets DTR=false on open, so we must assert it.
-                    // Non-CDC devices (CP2102, CH340, FT232…) may emit UART boot garbage instead.
-                    if (driver instanceof CdcAcmSerialDriver) {
-                        port.setDTR(true);
-                    } else {
-                        drainPort(port);
-                    }
+                    port.setDTR(true);
 
                     // Step 1: confirm RNode firmware via CMD_DETECT handshake
                     writeKissFrame(port, CMD_DETECT, DETECT_REQ);
                     KissFrame detectFrame = readKissFrame(port, 1500);
+                    if (detectFrame == null) { // Call again if CMD_DETECT is drowned out by ESP32 boot spam.
+                        writeKissFrame(port, CMD_DETECT, DETECT_REQ);
+                        detectFrame = readKissFrame(port, 1500);
+                    }
 
                     if (detectFrame == null
                             || detectFrame.command != CMD_DETECT
@@ -236,7 +234,8 @@ public class RNodeIdentifier {
             for (int i = 0; i < len; i++) {
                 byte b = buf[i];
                 if (inFrame && b == FEND) {
-                    return new KissFrame(command, payload.toByteArray());
+                    if (Arrays.binarySearch(VALID_CMD, command) >= 0)
+                        return new KissFrame(command, payload.toByteArray());
                 } else if (b == FEND) {
                     inFrame = true;
                     command = (byte) 0xFE;

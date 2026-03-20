@@ -48,6 +48,7 @@ _identity    = None
 _destination = None
 _links       = {}          # link_hash_hex → RNS.Link
 _pending_links = {}        # id(link) → RNS.Link  (keeps outbound links alive until established)
+_inbound_peer_map = {}     # link_hash_hex → remote_dest_hash_hex  (inbound links only)
 _known_peers = {}          # dest_hash_hex → {"identity": ..., "app_data": str}
 _own_hash    = None        # Our own destination hash as hex (for self-filter)
 _callbacks   = None        # Java-side callback object
@@ -682,6 +683,8 @@ def list_interfaces():
         try:
             iname = getattr(iface, "name", str(iface))
             itype = type(iface).__name__
+            if itype == "TCPServerInterfaceClient":
+                continue
             online = bool(getattr(iface, "online", False))
             rx = int(getattr(iface, "rxb", 0) or 0)
             tx = int(getattr(iface, "txb", 0) or 0)
@@ -1324,6 +1327,8 @@ def _link_matches_dest(link, dest_hash_hex):
 
 def _has_active_link_to(dest_hash_hex):
     """Return True if we already have a link (active or pending) to this destination."""
+    if dest_hash_hex in _inbound_peer_map.values():
+        return True
     for link in list(_links.values()):
         if _link_matches_dest(link, dest_hash_hex):
             return True
@@ -1423,11 +1428,31 @@ def _on_link_established(link):
     """Inbound link from a remote peer."""
     lhex = link.hash.hex() if hasattr(link, "hash") else str(id(link))
     _links[lhex] = link
+    # Register a callback so that when the link initiator identifies themselves
+    # (via link.identify on their end), we can map this inbound link to their
+    # destination hash and detect it in _has_active_link_to().
+    link.set_remote_identified_callback(_on_remote_identified)
     link.set_packet_callback(_on_fragment_received)
     link.set_link_closed_callback(_on_link_closed)
     link.keepalive = _LINK_KEEPALIVE
     _log(f"Inbound link from {lhex[:12]}")
     _notify_peer_connected(lhex)
+
+
+def _on_remote_identified(link, identity):
+    """Called when an inbound link's initiator reveals their identity."""
+    lhex = link.hash.hex() if hasattr(link, "hash") else str(id(link))
+    if identity is not None:
+        try:
+            remote_dest = RNS.Destination(
+                identity,
+                RNS.Destination.OUT, RNS.Destination.SINGLE,
+                APP_NAME, ASPECT_COT, ASPECT_SERVER,
+            )
+            _inbound_peer_map[lhex] = remote_dest.hash.hex()
+            _log(f"Inbound link {lhex[:12]} identified as {remote_dest.hash.hex()[:12]}")
+        except Exception:
+            pass
 
 
 def _on_outbound_link_established(link):
@@ -1437,12 +1462,19 @@ def _on_outbound_link_established(link):
     _links[lhex] = link
     _log(f"Outbound link established: {lhex[:12]}")
     _notify_peer_connected(lhex)
+    # Reveal our identity to the remote end so they can map this as an inbound
+    # link to us — used by _has_active_link_to() on their side.
+    try:
+        link.identify(_identity)
+    except Exception:
+        pass
 
 
 def _on_link_closed(link):
     _pending_links.pop(id(link), None)
     lhex = link.hash.hex() if hasattr(link, "hash") else str(id(link))
     _links.pop(lhex, None)
+    _inbound_peer_map.pop(lhex, None)
     with _send_counters_lock:
         _send_counters.pop(lhex, None)
     try:

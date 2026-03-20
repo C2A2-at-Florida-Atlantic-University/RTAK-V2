@@ -183,6 +183,12 @@ public class InterfacesActivity extends AppCompatActivity {
                 item.txpower         = di.config.optInt("txpower", 0);
                 item.spreadingfactor = di.config.optInt("spreadingfactor", 0);
                 item.codingrate      = di.config.optInt("codingrate", 0);
+                item.listenIp        = di.config.optString("listen_ip",    "");
+                item.listenPort      = di.config.optString("listen_port",  "");
+                item.forwardIp       = di.config.optString("forward_ip",   "");
+                item.forwardPort     = di.config.optString("forward_port", "");
+                item.targetHost      = di.config.optString("target_host",  "");
+                item.targetPort      = di.config.optString("target_port",  "");
             }
             if (di.identifier != null) {
                 item.identifierMethod = di.identifier.optString("method", "always");
@@ -218,6 +224,12 @@ public class InterfacesActivity extends AppCompatActivity {
                     item.txpower         = cfg.optInt("txpower", 0);
                     item.spreadingfactor = cfg.optInt("spreadingfactor", 0);
                     item.codingrate      = cfg.optInt("codingrate", 0);
+                    item.listenIp        = cfg.optString("listen_ip",    "");
+                    item.listenPort      = cfg.optString("listen_port",  "");
+                    item.forwardIp       = cfg.optString("forward_ip",   "");
+                    item.forwardPort     = cfg.optString("forward_port", "");
+                    item.targetHost      = cfg.optString("target_host",  "");
+                    item.targetPort      = cfg.optString("target_port",  "");
                 }
                 items.add(item);
             }
@@ -571,18 +583,18 @@ public class InterfacesActivity extends AppCompatActivity {
                         "Coding Rate", String.valueOf(item.codingrate), InputType.TYPE_CLASS_NUMBER);
                 break;
             case "UDPInterface":
-                addField(form, fieldKeys, fieldViews, "listen_ip",   "Listen IP",   "");
-                addField(form, fieldKeys, fieldViews, "listen_port", "Listen Port",  "");
-                addField(form, fieldKeys, fieldViews, "forward_ip",  "Forward IP",   "");
-                addField(form, fieldKeys, fieldViews, "forward_port","Forward Port", "");
+                addField(form, fieldKeys, fieldViews, "listen_ip",    "Listen IP",    item.listenIp);
+                addField(form, fieldKeys, fieldViews, "listen_port",  "Listen Port",  item.listenPort);
+                addField(form, fieldKeys, fieldViews, "forward_ip",   "Forward IP",   item.forwardIp);
+                addField(form, fieldKeys, fieldViews, "forward_port", "Forward Port", item.forwardPort);
                 break;
             case "TCPClientInterface":
-                addField(form, fieldKeys, fieldViews, "target_host", "Host / IP", "");
-                addField(form, fieldKeys, fieldViews, "target_port", "Port",      "");
+                addField(form, fieldKeys, fieldViews, "target_host", "Host / IP", item.targetHost);
+                addField(form, fieldKeys, fieldViews, "target_port", "Port",      item.targetPort);
                 break;
             case "TCPServerInterface":
-                addField(form, fieldKeys, fieldViews, "listen_ip",   "Listen IP",  "");
-                addField(form, fieldKeys, fieldViews, "listen_port", "Listen Port", "");
+                addField(form, fieldKeys, fieldViews, "listen_ip",   "Listen IP",   item.listenIp);
+                addField(form, fieldKeys, fieldViews, "listen_port", "Listen Port", item.listenPort);
                 break;
         }
 
@@ -662,6 +674,9 @@ public class InterfacesActivity extends AppCompatActivity {
         String port;
         long frequency, bandwidth;
         int txpower, spreadingfactor, codingrate;
+        // UDP / TCP config fields
+        String listenIp, listenPort, forwardIp, forwardPort;
+        String targetHost, targetPort;
     }
 
     private class InterfaceAdapter extends RecyclerView.Adapter<InterfaceAdapter.VH> {
