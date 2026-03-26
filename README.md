@@ -165,7 +165,3 @@ The `RTAKCallback` interface is passed to Python as a Chaquopy `PyObject`, allow
 - Each bridge node has a persistent Ed25519/X25519 identity
 - Links provide forward secrecy via ephemeral key exchange
 - TAK client ↔ bridge TCP connection is **cleartext** (standard TAK protocol); for encrypted TAK connections, use TAK Server with TLS certificates
-
-## License
-
-MIT License. Reticulum Network Stack is also MIT licensed.
