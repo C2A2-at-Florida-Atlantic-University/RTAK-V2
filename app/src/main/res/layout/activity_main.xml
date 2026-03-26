@@ -12,22 +12,7 @@
         android:padding="16dp">
 
         <!-- ── Header ──────────────────────────────────────────── -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="RTAK Bridge"
-            android:textSize="24sp"
-            android:textStyle="bold"
-            android:textColor="?android:attr/textColorPrimary"
-            android:layout_marginBottom="4dp" />
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="TAK ↔ Reticulum Network Stack Bridge"
-            android:textSize="13sp"
-            android:textColor="?android:attr/textColorSecondary"
-            android:layout_marginBottom="16dp" />
 
         <!-- ── Bridge Status Card ──────────────────────────────── -->
         <androidx.cardview.widget.CardView

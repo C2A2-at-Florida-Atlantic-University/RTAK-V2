@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.RTAKBridge" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
-        <item name="colorPrimary">#1B5E20</item>
-        <item name="colorPrimaryDark">#003300</item>
-        <item name="colorAccent">#4CAF50</item>
-        <item name="android:statusBarColor">#003300</item>
+        <item name="colorPrimary">#FB8016</item>
+        <item name="colorPrimaryDark">#BF6000</item>
+        <item name="colorAccent">#FB8016</item>
+        <item name="android:statusBarColor">#BF6000</item>
     </style>
 </resources>

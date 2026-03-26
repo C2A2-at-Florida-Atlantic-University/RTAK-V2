@@ -230,7 +230,7 @@ public class MainActivity extends AppCompatActivity {
 
         int stateColor;
         switch (s.bridgeState) {
-            case "RUNNING": stateColor = 0xFF4CAF50; break;  // green
+            case "RUNNING": stateColor = 0xFFFB8016; break;  // orange
             case "ERROR":   stateColor = 0xFFF44336; break;  // red
             default:        stateColor = 0xFFFF9800; break;  // orange
         }
@@ -438,6 +438,9 @@ public class MainActivity extends AppCompatActivity {
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         if (item.getItemId() == R.id.action_settings) {
             startActivity(new Intent(this, SettingsActivity.class));
+            return true;
+        } else if (item.getItemId() == R.id.action_licenses) {
+            startActivity(new Intent(this, LicensesActivity.class));
             return true;
         } else if (item.getItemId() == R.id.action_clear_log) {
             logBuffer.setLength(0);

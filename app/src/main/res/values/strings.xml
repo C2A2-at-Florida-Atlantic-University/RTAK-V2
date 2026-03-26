@@ -1,9 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">RTAK Bridge</string>
+    <string name="app_name">RTAK</string>
     <string name="settings_title">Settings</string>
     <string name="action_settings">Settings</string>
     <string name="action_clear_log">Clear Log</string>
     <string name="action_close_app">Close App</string>
     <string name="action_restart_app">Restart App</string>
+    <string name="action_licenses">Licenses</string>
+    <string name="licenses_title">Open Source Licenses</string>
+
+    <!-- RTAK license text -->
+    <string name="license_rtak_title">RTAK Bridge</string>
+    <string name="license_rtak_body">MIT License\n\nCopyright (c) 2024\u20132026 CAAI\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \u201cSoftware\u201d), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nADDITIONAL RESTRICTIONS \u2014 This Software incorporates the Reticulum Network Stack and the following restrictions apply to this Software and all derivative works:\n\n\u2022 The Software shall not be used in any kind of system which includes amongst its functions the ability to purposefully do harm to human beings.\n\n\u2022 The Software shall not be used, directly or indirectly, in the creation of an artificial intelligence, machine learning or language model training dataset, including but not limited to any use that contributes to the training or development of such a model or algorithm.\n\nTHE SOFTWARE IS PROVIDED \u201cAS IS\u201d, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</string>
+
+    <!-- Reticulum Network Stack license text -->
+    <string name="license_rns_title">Reticulum Network Stack</string>
+    <string name="license_rns_body">Copyright (c) 2016\u20132026 Mark Qvist\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \u201cSoftware\u201d), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\n\u2022 The Software shall not be used in any kind of system which includes amongst its functions the ability to purposefully do harm to human beings.\n\n\u2022 The Software shall not be used, directly or indirectly, in the creation of an artificial intelligence, machine learning or language model training dataset, including but not limited to any use that contributes to the training or development of such a model or algorithm.\n\n\u2022 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \u201cAS IS\u201d, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</string>
+
+    <!-- Chaquopy license text -->
+    <string name="license_chaquopy_title">Chaquopy</string>
+    <string name="license_chaquopy_body">Chaquopy is the Python SDK for Android, developed by Chaquo Ltd.\n\nCopyright (c) Chaquo Ltd\n\nChaquopy is free to use in open-source projects. See https://chaquo.com/chaquopy/ for licensing details.\n\nThis app uses Chaquopy to run Python code (the Reticulum bridge) on Android via the Java/Python interoperability layer.</string>
 </resources>

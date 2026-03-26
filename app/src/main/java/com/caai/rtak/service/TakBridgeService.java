@@ -31,8 +31,11 @@ import com.caai.rtak.model.BridgeStatus;
 import com.caai.rtak.ui.MainActivity;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -86,6 +89,7 @@ public class TakBridgeService extends Service implements RTAKCallback,
     private BroadcastReceiver usbReceiver;
     private InterfaceDetector interfaceDetector;
     private volatile boolean interfacesLocked = false;
+    private volatile CountDownLatch usbPermissionLatch = null;
 
     private final ExecutorService bgExecutor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -196,6 +200,9 @@ public class TakBridgeService extends Service implements RTAKCallback,
                 JSONObject detectedMap = (interfaceDetector != null)
                         ? interfaceDetector.buildDetectedMap()
                         : new JSONObject();
+
+                // 3.5 Ensure USB permissions are granted before RNS opens any serial device
+                checkAndRequestUsbPermissionsSync(detectedMap);
 
                 // 4. Generate the RNS config file from JSON interface configs
                 bridge = new ReticulumBridge();
@@ -543,6 +550,34 @@ public class TakBridgeService extends Service implements RTAKCallback,
     }
 
     /**
+     * Rename an existing interface config in the JSON registry.
+     * The newConfigJson entry may carry a different name than oldName.
+     * Only allowed when the bridge has NOT been started.
+     */
+    public void renameInterface(String oldName, String newConfigJson) {
+        if (interfacesLocked) {
+            mainHandler.post(() -> android.widget.Toast.makeText(this,
+                    LOCKED_MSG, android.widget.Toast.LENGTH_LONG).show());
+            return;
+        }
+        bgExecutor.submit(() -> {
+            String newName = ReticulumBridge.renameInterfaceConfig(
+                    getApplicationContext(), oldName, newConfigJson);
+            if (newName != null) {
+                postLog("Interface renamed: " + oldName + " -> " + newName);
+                mainHandler.post(() -> interfaceEventLive.setValue(
+                        new String[]{newName, "UPDATED"}));
+                if (interfaceDetector != null) interfaceDetector.scanNow();
+            } else {
+                postLog("ERROR: Failed to rename interface: " + oldName);
+                mainHandler.post(() -> android.widget.Toast.makeText(this,
+                        "Name already in use or interface not found",
+                        android.widget.Toast.LENGTH_LONG).show());
+            }
+        });
+    }
+
+    /**
      * Enable or disable an interface config in the JSON registry.
      * Only allowed when the bridge has NOT been started.
      */
@@ -590,6 +625,55 @@ public class TakBridgeService extends Service implements RTAKCallback,
     // USB events now only trigger detection scans (no auto-add behaviour).
     // The InterfaceDetector handles matching against configured interfaces.
 
+    /**
+     * Checks USB permission for every device path in {@code detectedMap} and
+     * requests permission for any that lack it.  Blocks the calling (background)
+     * thread until all pending permission dialogs are resolved or a 30-second
+     * timeout expires.  Safe to call from a non-main thread.
+     */
+    private void checkAndRequestUsbPermissionsSync(JSONObject detectedMap) {
+        Map<String, UsbDevice> usbDevices = usbManager.getDeviceList();
+
+        List<UsbDevice> needPermission = new ArrayList<>();
+        try {
+            for (int i = 0; i < (detectedMap.names() != null ? detectedMap.names().length() : 0); i++) {
+                String name = detectedMap.names().getString(i);
+                Object pathObj = detectedMap.get(name);
+                if (pathObj == null || pathObj == JSONObject.NULL) continue;
+                String devicePath = pathObj.toString();
+
+                UsbDevice device = usbDevices.get(devicePath);
+                if (device != null && !usbManager.hasPermission(device)) {
+                    needPermission.add(device);
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "checkAndRequestUsbPermissionsSync: " + e.getMessage());
+        }
+
+        if (needPermission.isEmpty()) return;
+
+        postLog("Requesting USB permission for " + needPermission.size() + " device(s)…");
+        usbPermissionLatch = new CountDownLatch(needPermission.size());
+
+        for (UsbDevice device : needPermission) {
+            PendingIntent pi = PendingIntent.getBroadcast(
+                    this, 0,
+                    new Intent(ACTION_USB_PERMISSION).setPackage(getPackageName()),
+                    PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            usbManager.requestPermission(device, pi);
+        }
+
+        try {
+            usbPermissionLatch.await(30, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            usbPermissionLatch = null;
+        }
+        postLog("USB permission check complete");
+    }
+
     private void registerUsbReceiver() {
         usbReceiver = new BroadcastReceiver() {
             @Override
@@ -622,6 +706,9 @@ public class TakBridgeService extends Service implements RTAKCallback,
                     } else {
                         postLog("USB permission denied for: " + device.getDeviceName());
                     }
+                    // Release the latch if a pre-start permission check is waiting
+                    CountDownLatch latch = usbPermissionLatch;
+                    if (latch != null) latch.countDown();
                 }
             }
         };
@@ -661,7 +748,7 @@ public class TakBridgeService extends Service implements RTAKCallback,
         return new NotificationCompat.Builder(this, RTAKApplication.CHANNEL_ID)
                 .setContentTitle("RTAK Bridge")
                 .setContentText(text)
-                .setSmallIcon(R.drawable.ic_bridge)
+                .setSmallIcon(R.drawable.ic_launcher)
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
                 .build();
@@ -679,7 +766,7 @@ public class TakBridgeService extends Service implements RTAKCallback,
                         new NotificationCompat.Builder(this, RTAKApplication.CHANNEL_ID)
                                 .setContentTitle("Interface Disconnected")
                                 .setContentText(name + " was unplugged")
-                                .setSmallIcon(R.drawable.ic_bridge)
+                                .setSmallIcon(R.drawable.ic_launcher)
                                 .setContentIntent(pi)
                                 .setAutoCancel(true)
                                 .build());

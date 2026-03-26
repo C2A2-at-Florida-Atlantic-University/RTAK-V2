@@ -28,6 +28,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.caai.rtak.ReticulumBridge;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.hoho.android.usbserial.driver.CdcAcmSerialDriver;
 import com.hoho.android.usbserial.driver.ProbeTable;
@@ -42,7 +43,10 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -201,6 +205,10 @@ public class InterfacesActivity extends AppCompatActivity {
     }
 
     private List<InterfaceItem> parseInterfaceJson(String json) {
+        final Map<String, String> tempMap = new HashMap<>();
+        for (Map.Entry<String, String> temp : ReticulumBridge.interfaceTypeMap.entrySet())
+            tempMap.put(temp.getValue(), temp.getKey());
+
         List<InterfaceItem> items = new ArrayList<>();
         try {
             JSONArray arr = new JSONArray(json);
@@ -208,7 +216,8 @@ public class InterfacesActivity extends AppCompatActivity {
                 JSONObject obj = arr.getJSONObject(i);
                 InterfaceItem item = new InterfaceItem();
                 item.name     = obj.optString("name", "?");
-                item.type     = obj.optString("type", "?");
+                final String temp = obj.optString("type", "?");
+                item.type = tempMap.getOrDefault(temp, temp);
                 item.online   = obj.optBoolean("online", false);
                 item.rxBytes  = obj.optLong("rx_bytes", 0);
                 item.txBytes  = obj.optLong("tx_bytes", 0);
@@ -246,14 +255,7 @@ public class InterfacesActivity extends AppCompatActivity {
             return;
         }
 
-        String[] types = {
-                "UDPInterface",
-                "TCPClientInterface",
-                "TCPServerInterface",
-                "RNodeInterface",
-                "SerialInterface",
-                "KISSInterface",
-        };
+        final String[] types = ReticulumBridge.interfaceTypeMap.keySet().toArray(new String[0]);
 
         Spinner spinnerType = new Spinner(this);
         spinnerType.setAdapter(new ArrayAdapter<>(this,
@@ -278,6 +280,13 @@ public class InterfacesActivity extends AppCompatActivity {
                         Toast.makeText(this, "Name is required", Toast.LENGTH_SHORT).show();
                         return;
                     }
+                    for (InterfaceItem existing : adapter.getItems()) {
+                        if (existing.name.equalsIgnoreCase(name)) {
+                            Toast.makeText(this, "An interface named \"" + name + "\" already exists",
+                                    Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                    }
                     showTypeConfigDialog(name, type);
                 })
                 .setNegativeButton("Cancel", null)
@@ -293,24 +302,24 @@ public class InterfacesActivity extends AppCompatActivity {
         List<EditText> fieldViews = new ArrayList<>();
 
         switch (type) {
-            case "UDPInterface":
+            case "UDP Interface":
                 addField(form, fieldKeys, fieldViews, "listen_ip",   "Listen IP",    "0.0.0.0");
                 addField(form, fieldKeys, fieldViews, "listen_port", "Listen Port",  "4242");
                 addField(form, fieldKeys, fieldViews, "forward_ip",  "Forward IP",   "255.255.255.255");
                 addField(form, fieldKeys, fieldViews, "forward_port","Forward Port", "4242");
                 addField(form, fieldKeys, fieldViews, "device",      "Bind to network device (optional, e.g. wlan0)", "");
                 break;
-            case "TCPClientInterface":
+            case "TCP Client Interface":
                 addField(form, fieldKeys, fieldViews, "target_host", "Host / IP",  "");
                 addField(form, fieldKeys, fieldViews, "target_port", "Port",       "4242");
                 addField(form, fieldKeys, fieldViews, "device",      "Bind to network device (optional)", "");
                 break;
-            case "TCPServerInterface":
+            case "TCP Server Interface":
                 addField(form, fieldKeys, fieldViews, "listen_ip",   "Listen IP",  "0.0.0.0");
                 addField(form, fieldKeys, fieldViews, "listen_port", "Listen Port","4242");
                 addField(form, fieldKeys, fieldViews, "device",      "Bind to network device (optional)", "");
                 break;
-            case "RNodeInterface":
+            case "RNode Interface":
                 addRNodePortField(form, fieldKeys, fieldViews, "");
                 addField(form, fieldKeys, fieldViews, "frequency",      "Frequency (Hz)",  "915000000", InputType.TYPE_CLASS_NUMBER);
                 addField(form, fieldKeys, fieldViews, "bandwidth",      "Bandwidth (Hz)",  "125000",    InputType.TYPE_CLASS_NUMBER);
@@ -318,11 +327,11 @@ public class InterfacesActivity extends AppCompatActivity {
                 addField(form, fieldKeys, fieldViews, "spreadingfactor","Spreading Factor","8",         InputType.TYPE_CLASS_NUMBER);
                 addField(form, fieldKeys, fieldViews, "codingrate",     "Coding Rate",     "5",         InputType.TYPE_CLASS_NUMBER);
                 break;
-            case "SerialInterface":
-                addField(form, fieldKeys, fieldViews, "port",  "Serial Port", "/dev/ttyUSB0");
+            case "Serial Interface":
+                addSerialPortField(form, fieldKeys, fieldViews, "");
                 addField(form, fieldKeys, fieldViews, "speed", "Baud Rate",   "115200");
                 break;
-            case "KISSInterface":
+            case "KISS Interface":
                 addField(form, fieldKeys, fieldViews, "port",  "Serial Port", "");
                 addField(form, fieldKeys, fieldViews, "speed", "Baud Rate",   "115200");
                 break;
@@ -350,8 +359,9 @@ public class InterfacesActivity extends AppCompatActivity {
 
                         // Build identifier
                         JSONObject identifier = new JSONObject();
-                        if (type.equals("RNodeInterface") || type.equals("SerialInterface")
-                                || type.equals("KISSInterface")) {
+                        boolean b = type.equals("RNode Interface") || type.equals("Serial Interface")
+                                || type.equals("KISS Interface");
+                        if (b) {
                             // For USB devices — scan current USB bus for VID/PID
                             int[] vidPid = detectUsbVidPid();
                             if (vidPid[0] != 0 && vidPid[1] != 0) {
@@ -368,6 +378,23 @@ public class InterfacesActivity extends AppCompatActivity {
                             identifier.put("device", device);
                         } else {
                             identifier.put("method", "always");
+                        }
+
+                        // Check for serial port conflicts before saving
+                        if (b) {
+                            String identMethod = identifier.optString("method", "always");
+                            String conflict = findConflictingSerialPort(
+                                    identMethod,
+                                    identifier.optInt("vid", 0),
+                                    identifier.optInt("pid", 0),
+                                    config.optString("port", ""),
+                                    null);
+                            if (conflict != null) {
+                                Toast.makeText(this,
+                                        "Port already in use by \"" + conflict + "\"",
+                                        Toast.LENGTH_SHORT).show();
+                                return;
+                            }
                         }
 
                         // Build the full registry entry
@@ -390,6 +417,26 @@ public class InterfacesActivity extends AppCompatActivity {
                 })
                 .setNegativeButton("Cancel", null)
                 .show();
+    }
+
+    /** Returns the name of an existing serial interface that already claims the same port,
+     *  or null if no conflict. For USB identifiers, matches by VID+PID.
+     *  For non-USB (manual port), matches by port path string. */
+    private String findConflictingSerialPort(String identifierMethod, int vid, int pid,
+                                             String port, String excludeName) {
+        for (InterfaceItem existing : adapter.getItems()) {
+            if (excludeName != null && existing.name.equals(excludeName)) continue;
+            boolean existingIsSerial = "RNode Interface".equals(existing.type)
+                    || "Serial Interface".equals(existing.type)
+                    || "KISS Interface".equals(existing.type);
+            if (!existingIsSerial) continue;
+            if ("usb".equals(identifierMethod) && "usb".equals(existing.identifierMethod)) {
+                if (existing.vid == vid && existing.pid == pid) return existing.name;
+            } else if (!"usb".equals(identifierMethod) && !"usb".equals(existing.identifierMethod)) {
+                if (!port.isEmpty() && port.equals(existing.port)) return existing.name;
+            }
+        }
+        return null;
     }
 
     private UsbSerialProber buildProber() {
@@ -545,6 +592,138 @@ public class InterfacesActivity extends AppCompatActivity {
         });
     }
 
+    /**
+     * Adds a "Serial Port" row with an inline "Scan USB" button for SerialInterface.
+     */
+    private void addSerialPortField(LinearLayout parent, List<String> keys,
+                                    List<EditText> views, String defaultPort) {
+        int dpTopMargin = (int) (8 * getResources().getDisplayMetrics().density);
+
+        TextView tv = new TextView(this);
+        tv.setText("Serial Port");
+        tv.setTextSize(12f);
+        tv.setAlpha(0.7f);
+        LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        labelLp.topMargin = dpTopMargin;
+        tv.setLayoutParams(labelLp);
+        parent.addView(tv);
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+
+        EditText et = new EditText(this);
+        et.setHint("/dev/ttyUSB0");
+        et.setText(defaultPort);
+        et.setInputType(InputType.TYPE_CLASS_TEXT);
+        LinearLayout.LayoutParams etLp = new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        et.setLayoutParams(etLp);
+        row.addView(et);
+
+        Button scanBtn = new Button(this);
+        scanBtn.setText("Scan USB");
+        scanBtn.setOnClickListener(v -> scanForSerialAdapters(et, scanBtn));
+        row.addView(scanBtn);
+
+        parent.addView(row);
+        keys.add("port");
+        views.add(et);
+    }
+
+    private void scanForSerialAdapters(EditText portField, Button scanBtn) {
+        UsbManager usbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
+        List<UsbSerialDriver> allDrivers = buildProber().findAllDrivers(usbManager);
+
+        if (allDrivers.isEmpty()) {
+            Toast.makeText(this, "No USB serial adapters found", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // usbserial4a needs USB permission granted before RNS opens the port at start time.
+        // Request permission for any device that doesn't have it yet, same as scanForRNodes.
+        boolean permissionRequested = false;
+        for (UsbSerialDriver driver : allDrivers) {
+            if (!usbManager.hasPermission(driver.getDevice())) {
+                PendingIntent pi = PendingIntent.getBroadcast(
+                        this, 0,
+                        new Intent(ACTION_USB_PERMISSION).setPackage(getPackageName()),
+                        PendingIntent.FLAG_MUTABLE);
+                usbManager.requestPermission(driver.getDevice(), pi);
+                permissionRequested = true;
+            }
+        }
+        if (permissionRequested) {
+            Toast.makeText(this,
+                    "USB permission needed — grant it in the dialog, then tap Scan again",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        scanBtn.setEnabled(false);
+        Toast.makeText(this, "Scanning for serial adapters...", Toast.LENGTH_SHORT).show();
+
+        bgExecutor.submit(() -> {
+            // Use RNode detection as an exclusion oracle — filter out confirmed RNodes
+            // so devices sharing chipsets (e.g. CP2102 on Heltec LoRa 32 V3) are excluded.
+            Set<String> rnodePaths = new java.util.HashSet<>();
+            for (RNodeIdentifier.RNodeInfo info :
+                    new RNodeIdentifier().discoverRNodes(InterfacesActivity.this)) {
+                rnodePaths.add(info.devicePath);
+            }
+
+            List<UsbSerialDriver> drivers = new ArrayList<>();
+            for (UsbSerialDriver d : allDrivers) {
+                if (!rnodePaths.contains(d.getDevice().getDeviceName())) {
+                    drivers.add(d);
+                }
+            }
+
+            runOnUiThread(() -> {
+                scanBtn.setEnabled(true);
+                if (drivers.isEmpty()) {
+                    Toast.makeText(this,
+                            rnodePaths.isEmpty()
+                                    ? "No USB serial adapters found"
+                                    : "No serial adapters found (connected device(s) are RNodes)",
+                            Toast.LENGTH_LONG).show();
+                    return;
+                }
+                if (drivers.size() == 1) {
+                    UsbSerialDriver d = drivers.get(0);
+                    portField.setText(d.getDevice().getDeviceName());
+                    Toast.makeText(this,
+                            getDriverChipName(d) + " found: " + d.getDevice().getDeviceName(),
+                            Toast.LENGTH_LONG).show();
+                    return;
+                }
+                String[] labels = new String[drivers.size()];
+                for (int i = 0; i < drivers.size(); i++) {
+                    UsbSerialDriver d = drivers.get(i);
+                    labels[i] = getDriverChipName(d) + "  \u2014  " + d.getDevice().getDeviceName();
+                }
+                new AlertDialog.Builder(this)
+                        .setTitle("Select Serial Adapter")
+                        .setItems(labels, (dialog, which) ->
+                                portField.setText(drivers.get(which).getDevice().getDeviceName()))
+                        .setNegativeButton("Cancel", null)
+                        .show();
+            });
+        });
+    }
+
+    private static String getDriverChipName(UsbSerialDriver driver) {
+        switch (driver.getClass().getSimpleName()) {
+            case "Cp21xxSerialDriver":   return "CP210x";
+            case "Ch34xSerialDriver":    return "CH340/341";
+            case "FtdiSerialDriver":     return "FTDI";
+            case "CdcAcmSerialDriver":   return "CDC ACM";
+            case "ProlificSerialDriver": return "PL2303";
+            default:
+                return driver.getClass().getSimpleName().replace("SerialDriver", "");
+        }
+    }
+
     // ── Edit Interface Dialog ───────────────────────────────────────────
 
     private void showEditInterfaceDialog(InterfaceItem item) {
@@ -558,6 +737,12 @@ public class InterfacesActivity extends AppCompatActivity {
         form.setOrientation(LinearLayout.VERTICAL);
         form.setPadding(48, 16, 48, 0);
 
+        // Name field
+        EditText etName = new EditText(this);
+        etName.setHint("Interface name");
+        etName.setText(item.name);
+        form.addView(etName);
+
         // Enable/Disable toggle
         androidx.appcompat.widget.SwitchCompat switchEnabled =
                 new androidx.appcompat.widget.SwitchCompat(this);
@@ -570,7 +755,8 @@ public class InterfacesActivity extends AppCompatActivity {
         List<EditText> fieldViews = new ArrayList<>();
 
         switch (item.type) {
-            case "RNodeInterface":
+            case "RNode Interface":
+                addRNodePortField(form, fieldKeys, fieldViews, item.port);
                 addField(form, fieldKeys, fieldViews, "frequency",
                         "Frequency (Hz)", String.valueOf(item.frequency), InputType.TYPE_CLASS_NUMBER);
                 addField(form, fieldKeys, fieldViews, "bandwidth",
@@ -582,33 +768,50 @@ public class InterfacesActivity extends AppCompatActivity {
                 addField(form, fieldKeys, fieldViews, "codingrate",
                         "Coding Rate", String.valueOf(item.codingrate), InputType.TYPE_CLASS_NUMBER);
                 break;
-            case "UDPInterface":
+            case "Serial Interface":
+                addSerialPortField(form, fieldKeys, fieldViews, item.port);
+                break;
+            case "KISS Interface":
+                addField(form, fieldKeys, fieldViews, "port", "Serial Port", item.port);
+                break;
+            case "UDP Interface":
                 addField(form, fieldKeys, fieldViews, "listen_ip",    "Listen IP",    item.listenIp);
                 addField(form, fieldKeys, fieldViews, "listen_port",  "Listen Port",  item.listenPort);
                 addField(form, fieldKeys, fieldViews, "forward_ip",   "Forward IP",   item.forwardIp);
                 addField(form, fieldKeys, fieldViews, "forward_port", "Forward Port", item.forwardPort);
                 break;
-            case "TCPClientInterface":
+            case "TCP Client Interface":
                 addField(form, fieldKeys, fieldViews, "target_host", "Host / IP", item.targetHost);
                 addField(form, fieldKeys, fieldViews, "target_port", "Port",      item.targetPort);
                 break;
-            case "TCPServerInterface":
+            case "TCP Server Interface":
                 addField(form, fieldKeys, fieldViews, "listen_ip",   "Listen IP",   item.listenIp);
                 addField(form, fieldKeys, fieldViews, "listen_port", "Listen Port", item.listenPort);
                 break;
         }
 
         new AlertDialog.Builder(this)
-                .setTitle("Edit: " + item.name)
+                .setTitle("Edit Interface")
                 .setView(form)
                 .setPositiveButton("Save", (d, w) -> {
-                    boolean wantEnabled = switchEnabled.isChecked();
-
-                    if (wantEnabled != item.enabled && boundService != null) {
-                        boundService.setInterfaceEnabled(item.name, wantEnabled);
+                    String newName = etName.getText().toString().trim();
+                    if (newName.isEmpty()) {
+                        Toast.makeText(this, "Name is required", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    if (!newName.equals(item.name)) {
+                        for (InterfaceItem existing : adapter.getItems()) {
+                            if (existing.name.equalsIgnoreCase(newName)) {
+                                Toast.makeText(this, "An interface named \"" + newName + "\" already exists",
+                                        Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                        }
                     }
 
-                    if (wantEnabled && boundService != null) {
+                    boolean wantEnabled = switchEnabled.isChecked();
+
+                    if (boundService != null) {
                         try {
                             JSONObject config = new JSONObject();
                             for (int i = 0; i < fieldKeys.size(); i++) {
@@ -618,16 +821,23 @@ public class InterfacesActivity extends AppCompatActivity {
                                 }
                             }
 
-                            // Build the full entry for save_interface_config
+                            // Build the full entry
                             JSONObject entry = new JSONObject();
-                            entry.put("name", item.name);
+                            entry.put("name", newName);
                             entry.put("type", item.type);
                             entry.put("enabled", wantEnabled);
                             entry.put("config", config);
 
-                            // Preserve existing identifier
+                            // Build identifier — for serial types, a manually entered port
+                            // overrides the existing identifier (switches to "always" method).
+                            boolean isSerial = item.type.equals("RNode Interface")
+                                    || item.type.equals("Serial Interface")
+                                    || item.type.equals("KISS Interface");
                             JSONObject identifier = new JSONObject();
-                            if (item.identifierMethod != null) {
+                            if (isSerial && config.has("port")) {
+                                // User supplied a port path — use plain "always" identifier
+                                identifier.put("method", "always");
+                            } else if (item.identifierMethod != null) {
                                 identifier.put("method", item.identifierMethod);
                                 if ("usb".equals(item.identifierMethod)) {
                                     identifier.put("vid", item.vid);
@@ -638,7 +848,27 @@ public class InterfacesActivity extends AppCompatActivity {
                             }
                             entry.put("identifier", identifier);
 
-                            boundService.updateInterface(entry.toString());
+                            // Check for serial port conflicts
+                            if (isSerial) {
+                                String conflict = findConflictingSerialPort(
+                                        identifier.optString("method", "always"),
+                                        identifier.optInt("vid", 0),
+                                        identifier.optInt("pid", 0),
+                                        config.optString("port", ""),
+                                        item.name);
+                                if (conflict != null) {
+                                    Toast.makeText(this,
+                                            "Port already in use by \"" + conflict + "\"",
+                                            Toast.LENGTH_SHORT).show();
+                                    return;
+                                }
+                            }
+
+                            if (newName.equals(item.name)) {
+                                boundService.updateInterface(entry.toString());
+                            } else {
+                                boundService.renameInterface(item.name, entry.toString());
+                            }
                         } catch (Exception e) {
                             Toast.makeText(this, "Error: " + e.getMessage(),
                                     Toast.LENGTH_LONG).show();
@@ -689,6 +919,8 @@ public class InterfacesActivity extends AppCompatActivity {
             notifyDataSetChanged();
         }
 
+        List<InterfaceItem> getItems() { return items; }
+
         @NonNull
         @Override
         public VH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
@@ -711,15 +943,15 @@ public class InterfacesActivity extends AppCompatActivity {
                 // When locked (running): show online/offline status
                 h.itemView.setAlpha(item.disconnected ? 0.5f : 1.0f);
                 h.statusDot.setBackgroundColor(
-                        item.disconnected ? Color.RED     :
-                        item.online       ? Color.GREEN   : Color.GRAY);
+                        item.disconnected ? Color.RED   :
+                        item.online       ? Color.GREEN : Color.GRAY);
             } else {
                 // When unlocked (pre-start): show detection status
                 h.itemView.setAlpha(!item.enabled ? 0.5f : 1.0f);
                 h.statusDot.setBackgroundColor(
-                        !item.enabled     ? Color.DKGRAY  :
-                        item.detected     ? Color.GREEN   :
-                                            Color.parseColor("#FFC107")); // amber
+                        !item.enabled ? Color.DKGRAY                   :
+                        item.detected ? Color.GREEN                     :
+                                        Color.parseColor("#FFC107")); // amber
             }
 
             // Remove button: only visible when unlocked

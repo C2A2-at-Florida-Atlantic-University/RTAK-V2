@@ -95,6 +95,43 @@ def _log(msg, level="INFO"):
     print(f"[RTAK {level} {ts}] {msg}", flush=True)
 
 
+# ── usbserial4a CP210x patch ──────────────────────────────────────────────
+def _patch_usbserial4a():
+    """
+    Fix two Python-3 / Chaquopy incompatibilities in usbserial4a==0.4.0's
+    Cp210xSerial driver that crash when opening a CP210x adapter:
+
+      1. open() calls _ctrl_transfer_out(CP210X_SET_BAUDDIV,
+            BAUD_RATE_GEN_FREQ / DEFAULT_BAUDRATE)
+         Python 3 true-division yields a float (384.0); Java controlTransfer
+         requires int — raises TypeError.
+
+      2. _ctrl_transfer_out passes buf=None directly to controlTransfer as the
+         byte[] argument; Java rejects null for that parameter.
+    """
+    try:
+        from usbserial4a import cp210xserial4a
+
+        def _ctrl_transfer_out_fixed(self, request, value, buf=None):
+            result = self._connection.controlTransfer(
+                self.REQTYPE_HOST_TO_INTERFACE,
+                request,
+                int(value),                                  # fix 1: float → int
+                self._index,
+                buf if buf is not None else bytearray(0),    # fix 2: None → empty bytearray
+                0 if buf is None else len(buf),
+                self.USB_WRITE_TIMEOUT_MILLIS,
+            )
+            return result
+
+        cp210xserial4a.Cp210xSerial._ctrl_transfer_out = _ctrl_transfer_out_fixed
+    except Exception:
+        pass  # Not on Android or usbserial4a not installed — nothing to patch
+
+
+_patch_usbserial4a()
+
+
 # ── Initialisation ────────────────────────────────────────────────────────
 def init(config_dir, callback_obj=None):
     """
@@ -345,18 +382,18 @@ def _ensure_default_config(config_dir):
 # Supported interface types and their module locations.
 # Android-specific variants are preferred where available.
 _INTERFACE_TYPES = {
-    "UDPInterface":       ("RNS.Interfaces.UDPInterface",         "UDPInterface"),
-    "TCPClientInterface": ("RNS.Interfaces.TCPInterface",         "TCPClientInterface"),
-    "TCPServerInterface": ("RNS.Interfaces.TCPInterface",         "TCPServerInterface"),
-    "RNodeInterface":     ("RNS.Interfaces.Android.RNodeInterface","RNodeInterface"),
-    "SerialInterface":    ("RNS.Interfaces.Android.SerialInterface","SerialInterface"),
-    "KISSInterface":      ("RNS.Interfaces.Android.KISSInterface", "KISSInterface"),
+    "UDP Interface":       ("RNS.Interfaces.UDPInterface",         "UDP Interface"),
+    "TCP Client Interface": ("RNS.Interfaces.TCPInterface",         "TCP Client Interface"),
+    "TCP Server Interface": ("RNS.Interfaces.TCPInterface",         "TCP Server Interface"),
+    "RNode Interface":     ("RNS.Interfaces.Android.RNodeInterface","RNode Interface"),
+    "Serial Interface":    ("RNS.Interfaces.Android.SerialInterface","Serial Interface"),
+    "KISS Interface":      ("RNS.Interfaces.Android.KISSInterface", "KISS Interface"),
 }
 # Desktop fallbacks for types that have Android variants
 _INTERFACE_FALLBACKS = {
-    "RNodeInterface":  ("RNS.Interfaces.RNodeInterface",  "RNodeInterface"),
-    "SerialInterface": ("RNS.Interfaces.SerialInterface", "SerialInterface"),
-    "KISSInterface":   ("RNS.Interfaces.KISSInterface",   "KISSInterface"),
+    "RNode Interface":  ("RNS.Interfaces.RNodeInterface",  "RNode Interface"),
+    "Serial Interface": ("RNS.Interfaces.SerialInterface", "Serial Interface"),
+    "KISS Interface":   ("RNS.Interfaces.KISSInterface",   "KISS Interface"),
 }
 
 
@@ -872,7 +909,7 @@ def _migrate_interface_registry(config_dir):
             # Remove port from config — it's resolved at detection time
             config.pop("port", None)
             changed = True
-        elif itype in ("UDPInterface", "TCPClientInterface", "TCPServerInterface"):
+        elif itype in ("UDP Interface", "TCP Client Interface", "TCP Server Interface"):
             device = config.pop("device", None)
             if device:
                 entry["identifier"] = {"method": "network_device", "device": device}
@@ -965,6 +1002,49 @@ def remove_interface_config(config_dir, name):
         _log(f"Interface config removed: {name}")
         return True
     return False
+
+
+def rename_interface_config(config_dir, old_name, new_config_json_str):
+    """Rename (and/or update) an interface entry atomically.
+
+    Finds the entry by old_name, replaces it with new_config (which may
+    carry a different name). Validates that new name is not already taken.
+    Returns new name on success, None on failure.
+    """
+    try:
+        new_entry = json.loads(new_config_json_str)
+    except Exception as e:
+        _log(f"rename_interface_config: invalid JSON: {e}", "ERROR")
+        return None
+
+    new_name = new_entry.get("name", "").strip()
+    if not new_name:
+        _log("rename_interface_config: 'name' is required", "ERROR")
+        return None
+
+    registry = _read_registry(config_dir)
+
+    # Check for name collision (only if actually renaming)
+    if new_name != old_name:
+        if any(e.get("name") == new_name for e in registry):
+            _log(f"rename_interface_config: name '{new_name}' already exists", "ERROR")
+            return None
+
+    found = False
+    for i, entry in enumerate(registry):
+        if entry.get("name") == old_name:
+            registry[i] = new_entry
+            found = True
+            break
+
+    if not found:
+        _log(f"rename_interface_config: '{old_name}' not found", "ERROR")
+        return None
+
+    if _write_registry(config_dir, registry):
+        _log(f"Interface renamed/updated: '{old_name}' -> '{new_name}'")
+        return new_name
+    return None
 
 
 # ── RNS config file generation ──────────────────────────────────────────
@@ -1534,7 +1614,7 @@ class RTAKAnnounceHandler:
             except:
                 pass
 
-        if is_new or not _has_active_link_to(hash_hex):
+        if not _has_active_link_to(hash_hex):
             threading.Thread(
                 target=connect_to_peer,
                 args=(hash_hex,),

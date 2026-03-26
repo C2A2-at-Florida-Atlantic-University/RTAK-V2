@@ -17,7 +17,9 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
 
 /**
  * Java-side wrapper around the Python {@code rtak_bridge} module.
@@ -28,6 +30,16 @@ import java.util.Iterator;
 public class ReticulumBridge {
 
     private static final String TAG = "ReticulumBridge";
+
+    public static final Map<String, String> interfaceTypeMap = new HashMap<>();
+    static {
+        interfaceTypeMap.put("UDP Interface", "UDPInterface");
+        interfaceTypeMap.put("TCP Client Interface", "TCPClientInterface");
+        interfaceTypeMap.put("TCP Server Interface", "TCPServerInterface");
+        interfaceTypeMap.put("RNode Interface", "RNodeInterface");
+        interfaceTypeMap.put("Serial Interface", "SerialInterface");
+        //interfaceTypeMap.put("KISS Interface", "KISSInterface"); // KISS interface disabled til further testing.
+    }
 
     private final Python py;
     private final PyObject bridgeModule;
@@ -224,7 +236,9 @@ public class ReticulumBridge {
                 if (!entry.optBoolean("enabled", true)) continue;
                 String name = entry.optString("name", "").trim();
                 String itype = entry.optString("type", "").trim();
-                if (name.isEmpty() || itype.isEmpty()) continue;
+                if (interfaceTypeMap.containsKey(itype))
+                    itype = interfaceTypeMap.get(itype);
+                if (name.isEmpty() || itype == null || itype.isEmpty()) continue;
                 if (detected != null && !detected.has(name)) continue;
 
                 // Deep-copy config so USB port injection doesn't mutate the original
@@ -330,6 +344,29 @@ public class ReticulumBridge {
         } catch (Exception e) {
             Log.e(TAG, "removeInterfaceConfig() failed", e);
             return false;
+        }
+    }
+
+    /**
+     * Rename (and/or update) an interface config atomically.
+     * Finds the entry by oldName and replaces it with newConfigJson
+     * (which may carry a different name).
+     *
+     * @return The new interface name on success, or null on failure.
+     */
+    public static String renameInterfaceConfig(Context context, String oldName, String newConfigJson) {
+        try {
+            Python py = Python.getInstance();
+            PyObject module = py.getModule("rtak_bridge");
+            File configDir = new File(context.getFilesDir(), "reticulum");
+            PyObject result = module.callAttr("rename_interface_config",
+                    configDir.getAbsolutePath(), oldName, newConfigJson);
+            if (result == null) return null;
+            String name = result.toJava(String.class);
+            return (name == null || name.isEmpty()) ? null : name;
+        } catch (Exception e) {
+            Log.e(TAG, "renameInterfaceConfig() failed", e);
+            return null;
         }
     }
 
